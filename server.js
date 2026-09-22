@@ -69,6 +69,12 @@ function getSession(req) {
     return { token, ...session };
 }
 
+function buildSessionCookie(req, token, maxAgeSeconds) {
+    const forwardedProtocol = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim().toLowerCase();
+    const secureRequest = Boolean(req.socket.encrypted || forwardedProtocol === 'https');
+    return `odyssa_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${maxAgeSeconds}${secureRequest ? '; Secure' : ''}`;
+}
+
 function sendJson(res, status, payload, extraHeaders = {}) {
     res.writeHead(status, {
         'Content-Type': 'application/json; charset=utf-8',
@@ -282,7 +288,7 @@ const server = http.createServer((req, res) => {
             const sessionUser = { username: user.username, role: user.role, displayName: user.displayName };
             sessions.set(token, { ...sessionUser, expiresAt: Date.now() + SESSION_TTL_MS });
             sendJson(res, 200, { success: true, user: sessionUser }, {
-                'Set-Cookie': `odyssa_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`
+                'Set-Cookie': buildSessionCookie(req, token, SESSION_TTL_MS / 1000)
             });
         });
         return;
@@ -297,6 +303,8 @@ const server = http.createServer((req, res) => {
         sendJson(res, 200, {
             authenticated: true,
             user: { username: session.username, role: session.role, displayName: session.displayName }
+        }, {
+            'Set-Cookie': buildSessionCookie(req, session.token, SESSION_TTL_MS / 1000)
         });
         return;
     }
@@ -305,7 +313,7 @@ const server = http.createServer((req, res) => {
         const session = getSession(req);
         if (session) sessions.delete(session.token);
         sendJson(res, 200, { success: true }, {
-            'Set-Cookie': 'odyssa_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'
+            'Set-Cookie': buildSessionCookie(req, '', 0)
         });
         return;
     }

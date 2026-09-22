@@ -234,12 +234,30 @@
             max-height: 52px;
         }
 
+        /* Auth visibility must not depend on Tailwind finishing its browser compilation. */
+        #auth-loading-screen.hidden,
+        #login-screen.hidden,
+        #app-shell.hidden { display: none !important; }
     </style>
 </head>
 <body class="h-screen overflow-hidden antialiased">
 
+    <!-- SESSION BOOT SCREEN: prevents login/app flicker while auth is restored -->
+    <section id="auth-loading-screen" class="min-h-screen w-full bg-[#220409] relative overflow-hidden flex items-center justify-center p-6" aria-live="polite" aria-busy="true">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(199,159,55,0.18),transparent_42%),radial-gradient(circle_at_bottom_left,rgba(126,36,55,0.55),transparent_42%)]"></div>
+        <div class="absolute inset-x-0 top-0 greek-meander"></div>
+        <div class="relative flex flex-col items-center gap-4 text-center">
+            <div class="logo-box w-16 h-16 rounded-2xl bg-cream-50 border border-greekGold-400/50 shadow-xl"><img src="./Logo.jpeg" alt="Odyssa"></div>
+            <div>
+                <p class="font-cinzel font-bold tracking-[0.18em] text-greekGold-300 text-sm">ODYSSA NAILS</p>
+                <p id="auth-loading-message" class="text-cream-200/80 text-xs mt-1">Validando tu sesión...</p>
+            </div>
+            <i class="fa-solid fa-circle-notch fa-spin text-greekGold-400 text-xl" aria-hidden="true"></i>
+        </div>
+    </section>
+
     <!-- SIMPLE LOGIN SCREEN -->
-    <section id="login-screen" class="min-h-screen w-full bg-[#220409] relative overflow-hidden flex items-center justify-center p-5 sm:p-8">
+    <section id="login-screen" class="hidden min-h-screen w-full bg-[#220409] relative overflow-hidden flex items-center justify-center p-5 sm:p-8">
         <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(199,159,55,0.22),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(126,36,55,0.55),transparent_40%)]"></div>
         <div class="absolute inset-x-0 top-0 greek-meander"></div>
 
@@ -1709,6 +1727,7 @@
         let isServerConnected = false;
         let appInitialized = false;
         let currentSessionUser = null;
+        let navigationListenerBound = false;
 
         function setLoginError(message = '') {
             const errorEl = document.getElementById('login-error');
@@ -1726,9 +1745,26 @@
             icon.className = reveal ? 'fa-regular fa-eye-slash' : 'fa-regular fa-eye';
         }
 
-        function showLoginScreen(message = '') {
+        function showSessionLoading(message = 'Validando tu sesión...') {
+            const loadingScreen = document.getElementById('auth-loading-screen');
+            const loadingMessage = document.getElementById('auth-loading-message');
             const loginScreen = document.getElementById('login-screen');
             const appShell = document.getElementById('app-shell');
+
+            if (loadingMessage) loadingMessage.textContent = message;
+            if (loadingScreen) loadingScreen.classList.remove('hidden');
+            if (loginScreen) loginScreen.classList.add('hidden');
+            if (appShell) {
+                appShell.classList.add('hidden');
+                appShell.classList.remove('flex');
+            }
+        }
+
+        function showLoginScreen(message = '') {
+            const loadingScreen = document.getElementById('auth-loading-screen');
+            const loginScreen = document.getElementById('login-screen');
+            const appShell = document.getElementById('app-shell');
+            if (loadingScreen) loadingScreen.classList.add('hidden');
             if (loginScreen) loginScreen.classList.remove('hidden');
             if (appShell) {
                 appShell.classList.add('hidden');
@@ -1754,19 +1790,24 @@
 
         async function showAuthenticatedApp(user) {
             currentSessionUser = user || { username: 'admin', role: 'admin', displayName: 'Administrador' };
+            showSessionLoading('Cargando tu espacio de trabajo...');
+            const loadingScreen = document.getElementById('auth-loading-screen');
             const loginScreen = document.getElementById('login-screen');
             const appShell = document.getElementById('app-shell');
-            if (loginScreen) loginScreen.classList.add('hidden');
-            if (appShell) {
-                appShell.classList.remove('hidden');
-                appShell.classList.add('flex');
-            }
 
             const userName = document.getElementById('session-user-name');
             if (userName) userName.textContent = currentSessionUser.displayName || currentSessionUser.username || 'Administrador';
             applyRoleAccess();
 
-            if (!appInitialized) await initializeApplication();
+            const initialized = appInitialized ? true : await initializeApplication();
+            if (!initialized) return;
+
+            if (loadingScreen) loadingScreen.classList.add('hidden');
+            if (loginScreen) loginScreen.classList.add('hidden');
+            if (appShell) {
+                appShell.classList.remove('hidden');
+                appShell.classList.add('flex');
+            }
         }
 
         async function handleLogin(event) {
@@ -1802,8 +1843,9 @@
         }
 
         async function handleLogout() {
+            showSessionLoading('Cerrando tu sesión...');
             try {
-                await fetch(`${API_BASE_URL}/api/logout`, { method: 'POST' });
+                await fetch(`${API_BASE_URL}/api/logout`, { method: 'POST', cache: 'no-store' });
             } catch (error) {
                 console.warn('[ODYSSA] No se pudo notificar el cierre de sesión.', error);
             }
@@ -1813,10 +1855,16 @@
         }
 
         async function restoreSession() {
+            showSessionLoading('Validando tu sesión...');
             try {
-                const response = await fetch(`${API_BASE_URL}/api/session`, { headers: { 'Accept': 'application/json' } });
+                const response = await fetch(`${API_BASE_URL}/api/session`, {
+                    headers: { 'Accept': 'application/json' },
+                    cache: 'no-store',
+                    credentials: 'same-origin'
+                });
                 if (!response.ok) throw new Error('not-authenticated');
                 const result = await response.json();
+                if (!result.authenticated || !result.user) throw new Error('not-authenticated');
                 await showAuthenticatedApp(result.user);
             } catch (error) {
                 showLoginScreen('');
@@ -1918,12 +1966,15 @@
             updateStorageBadge('connecting');
             try {
                 const response = await fetch(`${API_BASE_URL}/api/tables`, {
-                    headers: { 'Accept': 'application/json' }
+                    headers: { 'Accept': 'application/json' },
+                    cache: 'no-store',
+                    credentials: 'same-origin'
                 });
                 if (response.status === 401) {
                     appInitialized = false;
+                    currentSessionUser = null;
                     showLoginScreen('Tu sesión expiró. Ingresa nuevamente.');
-                    return;
+                    return false;
                 }
                 if (response.ok) {
                     const data = await response.json();
@@ -1944,7 +1995,7 @@
                         isServerConnected = true;
                         updateStorageBadge('connected');
                         console.log('[ODYSSA] Datos cargados exitosamente desde archivos planos (.txt)');
-                        return;
+                        return true;
                     }
                 }
                 throw new Error('Respuesta del servidor no válida');
@@ -1955,6 +2006,7 @@
                 if (!appState.services || appState.services.length === 0) {
                     appState = getInitialDemoData();
                 }
+                return true;
             }
         }
 
@@ -4233,7 +4285,7 @@
 
         // APP INITIALIZATION
         async function initializeApplication() {
-            if (appInitialized) return;
+            if (appInitialized) return true;
             appInitialized = true;
 
             // Set date display in header
@@ -4241,19 +4293,27 @@
             document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('es-ES', todayOptions);
 
             // Load state from flat files (.txt)
-            await loadState();
+            const stateLoaded = await loadState();
+            if (!stateLoaded) {
+                appInitialized = false;
+                return false;
+            }
 
             // Escuchar cambios de hash (botones Atrás/Adelante del navegador)
-            window.addEventListener('hashchange', () => {
-                const currentHash = window.location.hash.replace('#', '').trim();
-                if (currentHash) {
-                    switchTab(currentHash, false);
-                }
-            });
+            if (!navigationListenerBound) {
+                window.addEventListener('hashchange', () => {
+                    const currentHash = window.location.hash.replace('#', '').trim();
+                    if (currentHash) {
+                        switchTab(currentHash, false);
+                    }
+                });
+                navigationListenerBound = true;
+            }
 
             // Restaurar pestaña activa tras recargar
             const initialTab = getInitialTab();
             switchTab(initialTab, false);
+            return true;
         }
 
         window.addEventListener('load', restoreSession);
