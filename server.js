@@ -13,6 +13,7 @@ const zlib = require('zlib');
 
 const PORT = process.env.PORT || 3000;
 const APP_DIR = __dirname;
+const BUSINESS_TIME_ZONE = 'America/Lima';
 const IS_AZURE_APP_SERVICE = Boolean(process.env.WEBSITE_SITE_NAME || process.env.WEBSITE_INSTANCE_ID);
 const DATA_DIR = process.env.ODYSSA_DATA_DIR
     ? path.resolve(process.env.ODYSSA_DATA_DIR)
@@ -100,18 +101,38 @@ function readJsonBody(req, callback) {
     });
 }
 
+function getBusinessDateTimeParts(date = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: BUSINESS_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hourCycle: 'h23'
+    }).formatToParts(date).reduce((result, part) => {
+        if (part.type !== 'literal') result[part.type] = part.value;
+        return result;
+    }, {});
+
+    return {
+        date: `${parts.year}-${parts.month}-${parts.day}`,
+        time: `${parts.hour}:${parts.minute}`,
+        seconds: Number(parts.second || 0),
+        minuteOfDay: Number(parts.hour) * 60 + Number(parts.minute)
+    };
+}
+
 function getTodayISOString() {
-    return formatLocalDate(new Date());
+    return getBusinessDateTimeParts().date;
 }
 
 function getYesterdayISOString() {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return formatLocalDate(d);
-}
-
-function formatLocalDate(date) {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const today = getBusinessDateTimeParts().date;
+    const previousDate = new Date(`${today}T12:00:00Z`);
+    previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+    return previousDate.toISOString().slice(0, 10);
 }
 
 // Datos iniciales de demostración en caso de que los archivos .txt no existan
@@ -221,6 +242,7 @@ function writeTableFile(tableKey, data) {
 // Carga todas las tablas desde los archivos planos
 function loadAllTables() {
     ensureAllFilesExist();
+    synchronizeAppointmentStatuses();
     const result = {};
     for (const tableKey of Object.keys(TABLE_FILES)) {
         result[tableKey] = readTableFile(tableKey);
@@ -233,9 +255,43 @@ function saveAllTables(data) {
     ensureAllFilesExist();
     for (const [tableKey, tableData] of Object.entries(data)) {
         if (TABLE_FILES[tableKey]) {
-            writeTableFile(tableKey, tableData);
+            writeTableFile(
+                tableKey,
+                tableKey === 'appointments' ? applyAutomaticAppointmentStatuses(tableData).appointments : tableData
+            );
         }
     }
+}
+
+function applyAutomaticAppointmentStatuses(appointments, now = new Date()) {
+    const businessNow = getBusinessDateTimeParts(now);
+    const changedIds = [];
+    const normalizedAppointments = Array.isArray(appointments) ? appointments : [];
+
+    normalizedAppointments.forEach(appointment => {
+        if (!appointment || !['Reservada', 'Confirmada'].includes(appointment.status)) return;
+        if (appointment.date !== businessNow.date || !/^\d{2}:\d{2}$/.test(String(appointment.time || ''))) return;
+
+        const [hours, minutes] = appointment.time.split(':').map(Number);
+        const scheduledMinute = hours * 60 + minutes;
+        if (!Number.isFinite(scheduledMinute) || businessNow.minuteOfDay < scheduledMinute) return;
+
+        appointment.status = 'En atención';
+        appointment.actualStartTime = appointment.time;
+        appointment.startedAt = now.toISOString();
+        appointment.startedBy = 'sistema';
+        appointment.startedAutomatically = true;
+        changedIds.push(appointment.id);
+    });
+
+    return { appointments: normalizedAppointments, changedIds, businessNow };
+}
+
+function synchronizeAppointmentStatuses(now = new Date()) {
+    const appointments = readTableFile('appointments');
+    const result = applyAutomaticAppointmentStatuses(appointments, now);
+    if (result.changedIds.length > 0) writeTableFile('appointments', result.appointments);
+    return result;
 }
 
 // Tipos MIME para servir archivos estáticos
@@ -347,6 +403,20 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // Actualiza citas vencidas para iniciar usando la hora oficial de Lima (GMT-5).
+    if (req.method === 'POST' && pathname === '/api/appointments/sync-status') {
+        const result = synchronizeAppointmentStatuses();
+        sendJson(res, 200, {
+            success: true,
+            appointments: result.appointments,
+            changedIds: result.changedIds,
+            businessDate: result.businessNow.date,
+            businessTime: result.businessNow.time,
+            timeZone: BUSINESS_TIME_ZONE
+        });
+        return;
+    }
+
     // ENDPOINT: Guardar todas las tablas en sus respectivos archivos planos (.txt)
     if (req.method === 'POST' && pathname === '/api/save') {
         readJsonBody(req, (error, parsed) => {
@@ -375,7 +445,10 @@ const server = http.createServer((req, res) => {
         readJsonBody(req, (error, parsed) => {
             try {
                 if (error) throw error;
-                writeTableFile(tableName, parsed);
+                writeTableFile(
+                    tableName,
+                    tableName === 'appointments' ? applyAutomaticAppointmentStatuses(parsed).appointments : parsed
+                );
                 res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
                 res.end(JSON.stringify({ success: true, table: tableName }));
             } catch (err) {

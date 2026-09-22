@@ -1760,11 +1760,16 @@
         const API_BASE_URL = window.location.origin && window.location.origin.startsWith('http') 
             ? window.location.origin 
             : 'http://localhost:3000';
+        const BUSINESS_TIME_ZONE = 'America/Lima';
+        const APPOINTMENT_STATUS_SYNC_INTERVAL_MS = 10000;
         const APPOINTMENT_DEPOSIT_AMOUNT = 20;
         let isServerConnected = false;
         let appInitialized = false;
         let currentSessionUser = null;
         let navigationListenerBound = false;
+        let appointmentStatusSyncTimer = null;
+        let appointmentStatusSyncInFlight = false;
+        let appointmentStatusVisibilityBound = false;
 
         function setLoginError(message = '') {
             const errorEl = document.getElementById('login-error');
@@ -1798,6 +1803,7 @@
         }
 
         function showLoginScreen(message = '') {
+            stopAppointmentStatusSync();
             const loadingScreen = document.getElementById('auth-loading-screen');
             const loginScreen = document.getElementById('login-screen');
             const appShell = document.getElementById('app-shell');
@@ -1845,6 +1851,7 @@
                 appShell.classList.remove('hidden');
                 appShell.classList.add('flex');
             }
+            startAppointmentStatusSync();
         }
 
         async function handleLogin(event) {
@@ -1880,6 +1887,7 @@
         }
 
         async function handleLogout() {
+            stopAppointmentStatusSync();
             showSessionLoading('Cerrando tu sesión...');
             try {
                 await fetch(`${API_BASE_URL}/api/logout`, { method: 'POST', cache: 'no-store' });
@@ -2013,18 +2021,36 @@
             };
         }
 
+        function getBusinessDateTimeParts(date = new Date()) {
+            const parts = new Intl.DateTimeFormat('en-CA', {
+                timeZone: BUSINESS_TIME_ZONE,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hourCycle: 'h23'
+            }).formatToParts(date).reduce((result, part) => {
+                if (part.type !== 'literal') result[part.type] = part.value;
+                return result;
+            }, {});
+
+            return {
+                date: `${parts.year}-${parts.month}-${parts.day}`,
+                time: `${parts.hour}:${parts.minute}`,
+                minuteOfDay: Number(parts.hour) * 60 + Number(parts.minute)
+            };
+        }
+
         function getTodayISOString() {
-            return formatLocalDate(new Date());
+            return getBusinessDateTimeParts().date;
         }
 
         function getYesterdayISOString() {
-            const d = new Date();
-            d.setDate(d.getDate() - 1);
-            return formatLocalDate(d);
-        }
-
-        function formatLocalDate(date) {
-            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            const previousDate = new Date(`${getTodayISOString()}T12:00:00Z`);
+            previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+            return previousDate.toISOString().slice(0, 10);
         }
 
         // LOAD & SAVE STATE (Archivos Planos .txt)
@@ -2109,6 +2135,117 @@
                 updateStorageBadge('disconnected');
                 showToast('Servidor desconectado. Ejecute "iniciar_sistema.bat" para guardar en archivos .txt', 'error');
                 return false;
+            }
+        }
+
+        function refreshAppointmentViews() {
+            const agendaView = document.getElementById('view-agenda');
+            if (agendaView && !agendaView.classList.contains('hidden')) {
+                if (currentAgendaView === 'calendar') renderDynamicCalendar();
+                else renderAgenda();
+            }
+
+            const workersView = document.getElementById('view-trabajadoras');
+            if (workersView && !workersView.classList.contains('hidden')) renderWorkers();
+
+            const dashboardView = document.getElementById('view-dashboard');
+            if (isAdminSession() && dashboardView && !dashboardView.classList.contains('hidden')) renderDashboard();
+        }
+
+        async function synchronizeAppointmentStatuses({ notify = true } = {}) {
+            if (!currentSessionUser || appointmentStatusSyncInFlight) return false;
+            appointmentStatusSyncInFlight = true;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/appointments/sync-status`, {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json' },
+                    cache: 'no-store',
+                    credentials: 'same-origin'
+                });
+
+                if (response.status === 401) {
+                    currentSessionUser = null;
+                    appInitialized = false;
+                    showLoginScreen('Tu sesión expiró. Ingresa nuevamente.');
+                    return false;
+                }
+                if (!response.ok) throw new Error('No se pudo sincronizar el estado de las citas.');
+
+                const result = await response.json();
+                if (!Array.isArray(result.appointments)) return false;
+
+                const localAppointments = new Map(
+                    appState.appointments.map(appointment => [appointment.id, appointment])
+                );
+                const lifecycleFields = [
+                    'status', 'actualStartTime', 'startedAt', 'startedBy', 'startedAutomatically',
+                    'actualEndTime', 'completedAt', 'completedBy'
+                ];
+                const newlyStarted = [];
+                let stateChanged = false;
+
+                result.appointments.forEach(serverAppointment => {
+                    const localAppointment = localAppointments.get(serverAppointment.id);
+                    if (!localAppointment) {
+                        appState.appointments.push(serverAppointment);
+                        stateChanged = true;
+                        return;
+                    }
+
+                    const previousStatus = localAppointment.status;
+                    lifecycleFields.forEach(field => {
+                        if (Object.prototype.hasOwnProperty.call(serverAppointment, field)) {
+                            if (localAppointment[field] !== serverAppointment[field]) {
+                                localAppointment[field] = serverAppointment[field];
+                                stateChanged = true;
+                            }
+                        } else if (Object.prototype.hasOwnProperty.call(localAppointment, field)) {
+                            delete localAppointment[field];
+                            stateChanged = true;
+                        }
+                    });
+
+                    if (serverAppointment.status === 'En atención' && ['Reservada', 'Confirmada'].includes(previousStatus)) {
+                        newlyStarted.push(serverAppointment);
+                    }
+                });
+
+                if (stateChanged) refreshAppointmentViews();
+
+                if (notify && newlyStarted.length > 0) {
+                    const message = newlyStarted.length === 1
+                        ? 'La cita programada pasó automáticamente a En atención.'
+                        : `${newlyStarted.length} citas pasaron automáticamente a En atención.`;
+                    showToast(message);
+                }
+                return stateChanged;
+            } catch (error) {
+                console.warn('[ODYSSA] Sincronización automática de citas pendiente.', error);
+                return false;
+            } finally {
+                appointmentStatusSyncInFlight = false;
+            }
+        }
+
+        function stopAppointmentStatusSync() {
+            if (appointmentStatusSyncTimer) {
+                clearInterval(appointmentStatusSyncTimer);
+                appointmentStatusSyncTimer = null;
+            }
+        }
+
+        function startAppointmentStatusSync() {
+            stopAppointmentStatusSync();
+            appointmentStatusSyncTimer = setInterval(() => {
+                if (!document.hidden) synchronizeAppointmentStatuses();
+            }, APPOINTMENT_STATUS_SYNC_INTERVAL_MS);
+
+            if (!appointmentStatusVisibilityBound) {
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden && currentSessionUser) synchronizeAppointmentStatuses({ notify: false });
+                });
+                appointmentStatusVisibilityBound = true;
             }
         }
 
@@ -2486,8 +2623,9 @@
            DYNAMIC CALENDAR SYSTEM (SANTUARIO ODYSSA)
            ========================================================================== */
         let currentAgendaView = 'list';
-        let currentCalYear = new Date().getFullYear();
-        let currentCalMonth = new Date().getMonth(); // 0 - 11
+        const [initialBusinessYear, initialBusinessMonth] = getTodayISOString().split('-').map(Number);
+        let currentCalYear = initialBusinessYear;
+        let currentCalMonth = initialBusinessMonth - 1; // 0 - 11
         let selectedCalDate = getTodayISOString();
         let calDetailStatusFilter = 'ALL';
 
@@ -2587,7 +2725,7 @@
         function populateCalendarYearSelect() {
             const select = document.getElementById('cal-year-select');
             if (!select) return;
-            const currentYear = new Date().getFullYear();
+            const currentYear = Number(getTodayISOString().slice(0, 4));
             select.innerHTML = '';
             for (let y = currentYear - 2; y <= currentYear + 3; y++) {
                 const opt = document.createElement('option');
@@ -2637,9 +2775,9 @@
         }
 
         function goToCalendarToday() {
-            const today = new Date();
-            currentCalYear = today.getFullYear();
-            currentCalMonth = today.getMonth();
+            const [businessYear, businessMonth] = getTodayISOString().split('-').map(Number);
+            currentCalYear = businessYear;
+            currentCalMonth = businessMonth - 1;
             selectedCalDate = getTodayISOString();
             const yearSelect = document.getElementById('cal-year-select');
             if (yearSelect) yearSelect.value = currentCalYear;
@@ -2885,9 +3023,12 @@
                             '<div class="text-xs">' +
                                 '<p class="font-semibold text-slate-800 truncate">' + client.name + ' ' + client.lastname + '</p>' +
                                 '<p class="text-[11px] text-brand-700 truncate">' + service.name + ' (S/ ' + service.price.toFixed(2) + ')</p>' +
-                                (app.status === 'Completada' && app.actualEndTime
-                                    ? '<p class="text-[10px] text-emerald-700 mt-1"><i class="fa-solid fa-circle-check mr-1"></i>Finalizada a las ' + app.actualEndTime + '</p>'
-                                    : '') +
+                                 (app.status === 'Completada' && app.actualEndTime
+                                     ? '<p class="text-[10px] text-emerald-700 mt-1"><i class="fa-solid fa-circle-check mr-1"></i>Finalizada a las ' + app.actualEndTime + '</p>'
+                                     : '') +
+                                 (app.status === 'En atención' && app.startedAutomatically && app.actualStartTime
+                                     ? '<p class="text-[10px] text-purple-700 mt-1"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Inicio automático a las ' + app.actualStartTime + '</p>'
+                                     : '') +
                             '</div>' +
                             '<div class="flex justify-end gap-1.5 pt-1 border-t border-slate-100 text-[11px]">' +
                                 (app.status === 'En atención'
@@ -3035,6 +3176,7 @@
 
                         ${app.notes ? `<p class="text-[11px] text-slate-500 italic">"${app.notes}"</p>` : ''}
                         ${app.status === 'Completada' && app.actualEndTime ? `<p class="text-[11px] text-emerald-700 font-medium"><i class="fa-solid fa-circle-check mr-1"></i>Atención finalizada a las ${app.actualEndTime}</p>` : ''}
+                        ${app.status === 'En atención' && app.startedAutomatically && app.actualStartTime ? `<p class="text-[11px] text-purple-700 font-medium"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Inicio automático a las ${app.actualStartTime} (hora Lima)</p>` : ''}
 
                         <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
                             ${app.status === 'En atención' ? `
@@ -3456,7 +3598,7 @@
             }
 
             const now = new Date();
-            const actualEndTime = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+            const actualEndTime = getBusinessDateTimeParts(now).time;
             const worker = appState.workers.find(function(item) { return item.id === appointment.workerId; });
 
             appointment.status = 'Completada';
@@ -4110,9 +4252,9 @@
             const total = parseFloat(document.getElementById('sale-total').value);
             const paymentMethod = document.getElementById('sale-payment-method').value;
 
-            const now = new Date();
-            const date = getTodayISOString();
-            const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const businessNow = getBusinessDateTimeParts();
+            const date = businessNow.date;
+            const time = businessNow.time;
 
             const newSale = {
                 id: 'VEN-' + Date.now().toString().slice(-5),
@@ -4379,7 +4521,10 @@
 
             // Set date display in header
             const todayOptions = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('es-ES', todayOptions);
+            document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('es-ES', {
+                ...todayOptions,
+                timeZone: BUSINESS_TIME_ZONE
+            });
 
             // Load state from flat files (.txt)
             const stateLoaded = await loadState(initialData);
