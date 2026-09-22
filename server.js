@@ -9,6 +9,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const zlib = require('zlib');
 
 const PORT = process.env.PORT || 3000;
 const APP_DIR = __dirname;
@@ -287,7 +288,7 @@ const server = http.createServer((req, res) => {
             const token = crypto.randomBytes(32).toString('hex');
             const sessionUser = { username: user.username, role: user.role, displayName: user.displayName };
             sessions.set(token, { ...sessionUser, expiresAt: Date.now() + SESSION_TTL_MS });
-            sendJson(res, 200, { success: true, user: sessionUser }, {
+            sendJson(res, 200, { success: true, user: sessionUser, data: loadAllTables() }, {
                 'Set-Cookie': buildSessionCookie(req, token, SESSION_TTL_MS / 1000)
             });
         });
@@ -303,6 +304,23 @@ const server = http.createServer((req, res) => {
         sendJson(res, 200, {
             authenticated: true,
             user: { username: session.username, role: session.role, displayName: session.displayName }
+        }, {
+            'Set-Cookie': buildSessionCookie(req, session.token, SESSION_TTL_MS / 1000)
+        });
+        return;
+    }
+
+    // Una sola solicitud restaura la sesión y carga el estado necesario para pintar la app.
+    if (req.method === 'GET' && pathname === '/api/bootstrap') {
+        const session = getSession(req);
+        if (!session) {
+            sendJson(res, 401, { authenticated: false });
+            return;
+        }
+        sendJson(res, 200, {
+            authenticated: true,
+            user: { username: session.username, role: session.role, displayName: session.displayName },
+            data: loadAllTables()
         }, {
             'Set-Cookie': buildSessionCookie(req, session.token, SESSION_TTL_MS / 1000)
         });
@@ -325,9 +343,7 @@ const server = http.createServer((req, res) => {
 
     // ENDPOINT: Obtener todas las tablas desde archivos planos (.txt)
     if (req.method === 'GET' && pathname === '/api/tables') {
-        const data = loadAllTables();
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify(data));
+        sendJson(res, 200, loadAllTables());
         return;
     }
 
@@ -397,7 +413,7 @@ const server = http.createServer((req, res) => {
     const resolvedFilePath = path.resolve(filePath);
     const relativeFilePath = path.relative(APP_DIR, resolvedFilePath);
     const allowedRootFiles = new Set(['odyssa_nail_salon_management_system.html', 'Logo.jpeg']);
-    const isAllowedAsset = relativeFilePath.startsWith(`assets${path.sep}`) && ['.png', '.jpg', '.jpeg', '.svg', '.ico'].includes(path.extname(relativeFilePath).toLowerCase());
+    const isAllowedAsset = relativeFilePath.startsWith(`assets${path.sep}`) && ['.css', '.png', '.jpg', '.jpeg', '.svg', '.ico'].includes(path.extname(relativeFilePath).toLowerCase());
     const isAllowedStaticFile = allowedRootFiles.has(relativeFilePath) || isAllowedAsset;
 
     if (relativeFilePath.startsWith('..') || path.isAbsolute(relativeFilePath) || !isAllowedStaticFile) {
@@ -409,8 +425,35 @@ const server = http.createServer((req, res) => {
     if (fs.existsSync(resolvedFilePath) && fs.statSync(resolvedFilePath).isFile()) {
         const ext = path.extname(resolvedFilePath).toLowerCase();
         const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-        res.writeHead(200, { 'Content-Type': contentType });
-        fs.createReadStream(resolvedFilePath).pipe(res);
+        const stats = fs.statSync(resolvedFilePath);
+        const etag = `W/"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`;
+        const cacheControl = ext === '.html'
+            ? 'no-cache'
+            : 'public, max-age=3600, must-revalidate';
+        const acceptsGzip = /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''));
+        const shouldCompress = acceptsGzip && ['.html', '.css', '.js', '.json', '.svg'].includes(ext);
+        const staticHeaders = {
+            'Content-Type': contentType,
+            'Cache-Control': cacheControl,
+            'ETag': etag,
+            'Last-Modified': stats.mtime.toUTCString(),
+            'Vary': 'Accept-Encoding',
+            ...(shouldCompress ? { 'Content-Encoding': 'gzip' } : {})
+        };
+
+        if (req.headers['if-none-match'] === etag) {
+            res.writeHead(304, staticHeaders);
+            res.end();
+            return;
+        }
+
+        res.writeHead(200, staticHeaders);
+        const fileStream = fs.createReadStream(resolvedFilePath);
+        if (shouldCompress) {
+            fileStream.pipe(zlib.createGzip()).pipe(res);
+        } else {
+            fileStream.pipe(res);
+        }
     } else {
         res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Recurso no encontrado');

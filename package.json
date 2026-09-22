@@ -5,8 +5,13 @@
   "description": "Sistema de gestión de Odyssa Nails Studio",
   "main": "server.js",
   "scripts": {
+    "build": "npm run build:css",
+    "build:css": "tailwindcss -i ./src/tailwind.css -o ./assets/app.css --minify",
     "start": "node server.js",
     "check": "node --check server.js"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
   },
   "engines": {
     "node": ">=20"
