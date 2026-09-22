@@ -1,0 +1,33 @@
+# Dependencias y archivos locales
+node_modules/
+.env
+.env.*
+*.log
+
+# Datos operativos: contienen clientes, citas y ventas
+appointments.txt
+clients.txt
+config.txt
+sales.txt
+schedule.txt
+services.txt
+workers.txt
+
+# Artefactos de despliegue
+odyssa-azure-upload.zip
+.azure-package-test/
+
+# Scripts auxiliares usados durante el desarrollo
+add_dynamic_calendar.js
+apply_birthday_feature.js
+clean_html_script.js
+find_all_matches.js
+insert_client_crm.js
+inspect_*.js
+list_all_functions.js
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
