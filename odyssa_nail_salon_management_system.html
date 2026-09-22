@@ -1245,9 +1245,17 @@
                     <textarea id="app-notes" rows="2" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-400 focus:outline-none" placeholder="Preferencias del cliente, diseños requeridos..."></textarea>
                 </div>
 
+                <label for="app-deposit-paid" class="flex items-start gap-3 p-3.5 rounded-xl border border-amber-300 bg-amber-50/70 cursor-pointer select-none">
+                    <input type="checkbox" id="app-deposit-paid" required onchange="updateAppointmentDepositState()" class="mt-0.5 w-4 h-4 rounded border-amber-400 text-brand-600 focus:ring-brand-400">
+                    <span class="min-w-0">
+                        <span class="block text-xs font-bold text-amber-950">Pagó adelanto — S/ 20.00 *</span>
+                        <span class="block text-[11px] text-amber-800 mt-0.5">Confirma que el adelanto fue recibido antes de reservar la cita.</span>
+                    </span>
+                </label>
+
                 <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
                     <button type="button" onclick="closeModal('appointment-modal')" class="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl">Cancelar</button>
-                    <button type="submit" class="px-4 py-2 text-xs font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-xl shadow-xs">Guardar Cita</button>
+                    <button type="submit" id="appointment-submit-btn" disabled aria-disabled="true" title="Confirma el pago del adelanto para guardar" class="px-4 py-2 text-xs font-medium bg-brand-500 hover:bg-brand-600 text-white rounded-xl shadow-xs disabled:opacity-45 disabled:cursor-not-allowed disabled:hover:bg-brand-500">Guardar Cita</button>
                 </div>
             </form>
         </div>
@@ -1697,6 +1705,7 @@
         const API_BASE_URL = window.location.origin && window.location.origin.startsWith('http') 
             ? window.location.origin 
             : 'http://localhost:3000';
+        const APPOINTMENT_DEPOSIT_AMOUNT = 20;
         let isServerConnected = false;
         let appInitialized = false;
         let currentSessionUser = null;
@@ -2911,6 +2920,7 @@
             populateAppointmentSelects();
             const form = document.getElementById('appointment-form');
             form.reset();
+            const depositCheckbox = document.getElementById('app-deposit-paid');
 
             if (appId) {
                 const app = appState.appointments.find(a => a.id === appId);
@@ -2925,6 +2935,7 @@
                     document.getElementById('app-service-id').value = app.serviceId;
                     document.getElementById('app-status').value = app.status;
                     document.getElementById('app-notes').value = app.notes || '';
+                    depositCheckbox.checked = app.depositPaid === true;
 
                     recalculateAppointmentEndTime();
                     document.getElementById('appointment-modal-title').innerText = 'Editar Cita';
@@ -2936,10 +2947,25 @@
                 filterAvailableServicesForWorker();
                 recalculateAppointmentEndTime();
                 document.getElementById('appointment-modal-title').innerText = 'Agendar Nueva Cita';
+                depositCheckbox.checked = false;
             }
 
+            updateAppointmentDepositState();
             updateAppointmentTimeOptions();
             openModal('appointment-modal');
+        }
+
+        function updateAppointmentDepositState() {
+            const depositCheckbox = document.getElementById('app-deposit-paid');
+            const submitButton = document.getElementById('appointment-submit-btn');
+            if (!depositCheckbox || !submitButton) return;
+
+            const depositConfirmed = depositCheckbox.checked;
+            submitButton.disabled = !depositConfirmed;
+            submitButton.setAttribute('aria-disabled', String(!depositConfirmed));
+            submitButton.title = depositConfirmed
+                ? 'Guardar cita con adelanto confirmado'
+                : 'Confirma el pago del adelanto para guardar';
         }
 
         function populateAppointmentSelects() {
@@ -3150,6 +3176,13 @@
             const serviceId = document.getElementById('app-service-id').value;
             const status = document.getElementById('app-status').value;
             const notes = document.getElementById('app-notes').value;
+            const depositPaid = document.getElementById('app-deposit-paid').checked;
+
+            if (!depositPaid) {
+                updateAppointmentDepositState();
+                showToast(`Debes confirmar el adelanto de S/ ${APPOINTMENT_DEPOSIT_AMOUNT.toFixed(2)} para agendar la cita.`, 'error');
+                return;
+            }
 
             const service = appState.services.find(s => s.id === serviceId);
             const duration = service ? service.duration : 30;
@@ -3202,7 +3235,23 @@
                 const index = appState.appointments.findIndex(a => a.id === appId);
                 if (index !== -1) {
                     const existingAppointment = appState.appointments[index];
-                    appState.appointments[index] = { ...existingAppointment, id: appId, clientId, date, time, duration, endTime, workerId, serviceId, status, notes };
+                    appState.appointments[index] = {
+                        ...existingAppointment,
+                        id: appId,
+                        clientId,
+                        date,
+                        time,
+                        duration,
+                        endTime,
+                        workerId,
+                        serviceId,
+                        status,
+                        notes,
+                        depositPaid: true,
+                        depositAmount: APPOINTMENT_DEPOSIT_AMOUNT,
+                        depositConfirmedAt: existingAppointment.depositConfirmedAt || new Date().toISOString(),
+                        depositConfirmedBy: existingAppointment.depositConfirmedBy || (currentSessionUser ? currentSessionUser.username : 'sistema')
+                    };
                     if (status !== 'Completada') {
                         delete appState.appointments[index].actualEndTime;
                         delete appState.appointments[index].completedAt;
@@ -3213,7 +3262,19 @@
             } else {
                 const newApp = {
                     id: 'APT-' + Date.now().toString().slice(-4),
-                    clientId, date, time, duration, endTime, workerId, serviceId, status, notes
+                    clientId,
+                    date,
+                    time,
+                    duration,
+                    endTime,
+                    workerId,
+                    serviceId,
+                    status,
+                    notes,
+                    depositPaid: true,
+                    depositAmount: APPOINTMENT_DEPOSIT_AMOUNT,
+                    depositConfirmedAt: new Date().toISOString(),
+                    depositConfirmedBy: currentSessionUser ? currentSessionUser.username : 'sistema'
                 };
                 appState.appointments.push(newApp);
                 showToast('Cita agendada exitosamente.');
