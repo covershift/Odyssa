@@ -1,0 +1,55 @@
+name: Build and deploy Odyssa to Azure Web App
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: odyssanails-production
+  cancel-in-progress: true
+
+env:
+  AZURE_WEBAPP_NAME: odyssanails
+  NODE_VERSION: 24.x
+
+jobs:
+  build-and-deploy:
+    name: Validate and deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Validate server
+        run: npm run check
+
+      - name: Create Azure deployment package
+        shell: bash
+        run: |
+          mkdir -p azure-package/assets
+          cp server.js package.json odyssa_nail_salon_management_system.html Logo.jpeg azure-package/
+          cp assets/Logo.jpeg assets/aphrodite_hero.jpg assets/greek_emblem.jpg azure-package/assets/
+          cd azure-package
+          zip -r ../odyssa-azure-deploy.zip .
+
+      - name: Deploy to Azure App Service
+        id: deploy-to-webapp
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: odyssa-azure-deploy.zip
