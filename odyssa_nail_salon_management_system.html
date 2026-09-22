@@ -2360,7 +2360,6 @@
 
         function getWorkerScheduleForDate(worker, dateObj) {
             const dayName = CAL_DAY_NAMES[dateObj.getDay()];
-            const dateISO = formatLocalDate(dateObj);
             const salonSchedule = appState.schedule.find(function(entry) {
                 return entry.day.toLowerCase() === dayName.toLowerCase();
             }) || { day: dayName, active: false, open: '09:00', close: '18:00' };
@@ -2372,10 +2371,7 @@
 
             const effectiveOpenMinutes = Math.max(timeToMinutes(salonSchedule.open), timeToMinutes(assignedSchedule.open));
             const effectiveCloseMinutes = Math.min(timeToMinutes(salonSchedule.close), timeToMinutes(assignedSchedule.close));
-            const shiftFinished = Boolean(
-                worker && worker.shiftState && worker.shiftState.date === dateISO && worker.shiftState.status === 'finished'
-            );
-            const active = Boolean(salonSchedule.active && assignedSchedule.active && effectiveOpenMinutes < effectiveCloseMinutes && !shiftFinished);
+            const active = Boolean(salonSchedule.active && assignedSchedule.active && effectiveOpenMinutes < effectiveCloseMinutes);
 
             const formatMinutes = function(total) {
                 const hours = Math.floor(total / 60);
@@ -2389,7 +2385,6 @@
                 open: formatMinutes(effectiveOpenMinutes),
                 close: formatMinutes(effectiveCloseMinutes),
                 inherited: !workerSchedule,
-                shiftFinished,
                 salonSchedule
             };
         }
@@ -2402,10 +2397,7 @@
             const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
             const schedule = getWorkerScheduleForDate(worker, dateObj);
             if (!schedule.active) {
-                const message = schedule.shiftFinished
-                    ? `${worker.name} ya finalizó su turno para esta fecha.`
-                    : `${worker.name} no trabaja el ${schedule.day.toLowerCase()}.`;
-                return { valid: false, schedule, message };
+                return { valid: false, schedule, message: `${worker.name} no trabaja el ${schedule.day.toLowerCase()}.` };
             }
 
             const start = timeToMinutes(startTime);
@@ -2704,7 +2696,9 @@
                 }
                 workerApps.sort(function(a, b) { return a.time.localeCompare(b.time); });
 
-                const totalMinutes = allWorkerApps.filter(function(a) { return a.status !== 'Cancelada'; }).reduce(function(acc, curr) {
+                const totalMinutes = allWorkerApps.filter(function(a) {
+                    return ['Reservada', 'Confirmada', 'En atención'].includes(a.status);
+                }).reduce(function(acc, curr) {
                     return acc + (parseInt(curr.duration, 10) || 45);
                 }, 0);
 
@@ -2714,20 +2708,7 @@
                 const availableMinutes = Math.max(0, shiftMinutes - totalMinutes);
                 const scheduleBadge = isWorkDay 
                     ? '<span class="badge bg-emerald-100 text-emerald-800 border border-emerald-200 text-[10px]"><i class="fa-regular fa-clock mr-1"></i>' + workerSchedule.open + ' - ' + workerSchedule.close + '</span>'
-                    : workerSchedule.shiftFinished
-                        ? '<span class="badge bg-slate-200 text-slate-700 border border-slate-300 text-[10px]"><i class="fa-solid fa-circle-stop mr-1"></i>Finalizado</span>'
-                        : '<span class="badge bg-rose-100 text-rose-800 border border-rose-200 text-[10px]"><i class="fa-solid fa-moon mr-1"></i>Descanso</span>';
-                const operationalState = getWorkerOperationalState(worker, selectedCalDate);
-                let shiftControlHtml = '';
-                if (selectedCalDate === getTodayISOString()) {
-                    if (operationalState.status === 'busy') {
-                        shiftControlHtml = '<button onclick="releaseWorkerShift(\'' + worker.id + '\')" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition"><i class="fa-solid fa-unlock mr-1"></i>Liberar turno</button>';
-                    } else if (operationalState.status === 'available') {
-                        shiftControlHtml = '<button onclick="finishWorkerShift(\'' + worker.id + '\')" class="w-full py-2 bg-brand-800 hover:bg-brand-900 text-white rounded-xl text-xs font-semibold transition"><i class="fa-solid fa-circle-stop mr-1"></i>Finalizar turno</button>';
-                    } else if (operationalState.status === 'finished') {
-                        shiftControlHtml = '<button onclick="reopenWorkerShift(\'' + worker.id + '\')" class="w-full py-2 bg-white hover:bg-cream-100 text-brand-800 border border-greekGold-400/40 rounded-xl text-xs font-semibold transition"><i class="fa-solid fa-rotate-left mr-1"></i>Reabrir turno</button>';
-                    }
-                }
+                    : '<span class="badge bg-rose-100 text-rose-800 border border-rose-200 text-[10px]"><i class="fa-solid fa-moon mr-1"></i>Descanso</span>';
 
                 let appsListHtml = '';
                 if (workerApps.length === 0) {
@@ -2757,8 +2738,16 @@
                             '<div class="text-xs">' +
                                 '<p class="font-semibold text-slate-800 truncate">' + client.name + ' ' + client.lastname + '</p>' +
                                 '<p class="text-[11px] text-brand-700 truncate">' + service.name + ' (S/ ' + service.price.toFixed(2) + ')</p>' +
+                                (app.status === 'Completada' && app.actualEndTime
+                                    ? '<p class="text-[10px] text-emerald-700 mt-1"><i class="fa-solid fa-circle-check mr-1"></i>Finalizada a las ' + app.actualEndTime + '</p>'
+                                    : '') +
                             '</div>' +
                             '<div class="flex justify-end gap-1.5 pt-1 border-t border-slate-100 text-[11px]">' +
+                                (app.status === 'En atención'
+                                    ? '<button onclick="finishAppointmentNow(\'' + app.id + '\')" class="text-emerald-700 hover:text-emerald-900 px-1.5 py-0.5 rounded hover:bg-emerald-50 font-semibold" title="Completa esta atención y libera a la trabajadora de inmediato">' +
+                                        '<i class="fa-solid fa-circle-check"></i> Terminar turno' +
+                                      '</button>'
+                                    : '') +
                                 '<button onclick="editAppointment(\'' + app.id + '\')" class="text-slate-600 hover:text-brand-600 px-1.5 py-0.5 rounded hover:bg-slate-50">' +
                                     '<i class="fa-solid fa-pen"></i> Editar' +
                                 '</button>' +
@@ -2793,7 +2782,6 @@
                         appsListHtml +
                     '</div>' +
                     '<div class="pt-2 border-t border-slate-200/60 space-y-2">' +
-                        shiftControlHtml +
                         '<button ' + (!isWorkDay ? 'disabled title="La trabajadora no tiene turno este día" ' : '') + 'onclick="openAppointmentModalWithWorker(\'' + worker.id + '\', \'' + selectedCalDate + '\')" class="w-full py-2 bg-white hover:bg-cream-100 text-brand-900 border border-greekGold-400/40 rounded-xl text-xs font-cinzel font-semibold transition flex items-center justify-center gap-1.5 shadow-2xs disabled:opacity-45 disabled:cursor-not-allowed">' +
                             '<i class="fa-solid fa-plus text-greekGold-600"></i> Agendar con ' + worker.name +
                         '</button>' +
@@ -2899,8 +2887,14 @@
                         </div>
 
                         ${app.notes ? `<p class="text-[11px] text-slate-500 italic">"${app.notes}"</p>` : ''}
+                        ${app.status === 'Completada' && app.actualEndTime ? `<p class="text-[11px] text-emerald-700 font-medium"><i class="fa-solid fa-circle-check mr-1"></i>Atención finalizada a las ${app.actualEndTime}</p>` : ''}
 
                         <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                            ${app.status === 'En atención' ? `
+                                <button onclick="finishAppointmentNow('${app.id}')" class="text-xs text-emerald-700 hover:text-emerald-900 p-1.5 rounded hover:bg-emerald-50 font-semibold" title="Completa esta atención y libera a la trabajadora de inmediato">
+                                    <i class="fa-solid fa-circle-check"></i> Terminar turno
+                                </button>
+                            ` : ''}
                             <button onclick="editAppointment('${app.id}')" class="text-xs text-slate-600 hover:text-brand-600 p-1.5 rounded hover:bg-slate-50">
                                 <i class="fa-solid fa-pen-to-square"></i> Editar
                             </button>
@@ -3035,7 +3029,7 @@
 
             return appState.appointments.find(a => {
                 if (a.id === appId) return false;
-                if (a.workerId !== workerId || a.date !== date || a.status === 'Cancelada') return false;
+                if (a.workerId !== workerId || a.date !== date || ['Cancelada', 'Completada', 'No asistió'].includes(a.status)) return false;
 
                 const [existStartH, existStartM] = a.time.split(':').map(Number);
                 const [existEndH, existEndM] = a.endTime.split(':').map(Number);
@@ -3207,7 +3201,13 @@
             if (appId) {
                 const index = appState.appointments.findIndex(a => a.id === appId);
                 if (index !== -1) {
-                    appState.appointments[index] = { id: appId, clientId, date, time, duration, endTime, workerId, serviceId, status, notes };
+                    const existingAppointment = appState.appointments[index];
+                    appState.appointments[index] = { ...existingAppointment, id: appId, clientId, date, time, duration, endTime, workerId, serviceId, status, notes };
+                    if (status !== 'Completada') {
+                        delete appState.appointments[index].actualEndTime;
+                        delete appState.appointments[index].completedAt;
+                        delete appState.appointments[index].completedBy;
+                    }
                     showToast('Cita actualizada correctamente.');
                 }
             } else {
@@ -3243,6 +3243,34 @@
                 renderDashboard();
                 showToast('Cita cancelada.');
             }
+        }
+
+        function finishAppointmentNow(appId) {
+            const appointment = appState.appointments.find(function(item) { return item.id === appId; });
+            if (!appointment) {
+                showToast('No se encontró la cita.', 'error');
+                return;
+            }
+            if (appointment.status !== 'En atención') {
+                showToast('Solo se puede terminar una cita que esté En atención.', 'error');
+                return;
+            }
+
+            const now = new Date();
+            const actualEndTime = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+            const worker = appState.workers.find(function(item) { return item.id === appointment.workerId; });
+
+            appointment.status = 'Completada';
+            appointment.actualEndTime = actualEndTime;
+            appointment.completedAt = now.toISOString();
+            appointment.completedBy = currentSessionUser ? currentSessionUser.username : 'sistema';
+
+            saveState();
+            if (currentAgendaView === 'calendar') renderDynamicCalendar();
+            else renderAgenda();
+            renderWorkers();
+            if (isAdminSession()) renderDashboard();
+            showToast(`Atención finalizada. ${worker ? worker.name : 'La trabajadora'} quedó disponible desde las ${actualEndTime}.`);
         }
 
         function renderServices() {
@@ -3371,71 +3399,9 @@
                 return appointment.status === 'En atención';
             });
 
-            if (worker.shiftState && worker.shiftState.date === dateISO && worker.shiftState.status === 'finished') {
-                return { status: 'finished', label: 'Turno finalizado', pending, inProgress, schedule };
-            }
             if (!schedule.active) return { status: 'off', label: 'Sin turno hoy', pending, inProgress, schedule };
             if (inProgress.length) return { status: 'busy', label: 'En atención', pending, inProgress, schedule };
-            return { status: 'available', label: 'Turno disponible', pending, inProgress, schedule };
-        }
-
-        function releaseWorkerShift(workerId) {
-            const worker = appState.workers.find(function(item) { return item.id === workerId; });
-            if (!worker) return;
-            const today = getTodayISOString();
-            const inProgress = appState.appointments.filter(function(appointment) {
-                return appointment.workerId === workerId && appointment.date === today && appointment.status === 'En atención';
-            });
-
-            inProgress.forEach(function(appointment) { appointment.status = 'Completada'; });
-            worker.shiftState = {
-                date: today,
-                status: 'available',
-                updatedAt: new Date().toISOString(),
-                updatedBy: currentSessionUser ? currentSessionUser.username : 'sistema'
-            };
-            saveState();
-            renderWorkers();
-            if (currentAgendaView === 'calendar') renderDynamicCalendar();
-            else renderAgenda();
-            if (isAdminSession()) renderDashboard();
-            showToast(inProgress.length ? `Turno de ${worker.name} liberado y atención completada.` : `El turno de ${worker.name} ya está disponible.`);
-        }
-
-        function finishWorkerShift(workerId) {
-            const worker = appState.workers.find(function(item) { return item.id === workerId; });
-            if (!worker) return;
-            const state = getWorkerOperationalState(worker);
-            if (state.pending > 0) {
-                showToast(`No se puede finalizar: ${worker.name} tiene ${state.pending} cita(s) pendiente(s).`, 'error');
-                return;
-            }
-
-            worker.shiftState = {
-                date: getTodayISOString(),
-                status: 'finished',
-                updatedAt: new Date().toISOString(),
-                updatedBy: currentSessionUser ? currentSessionUser.username : 'sistema'
-            };
-            saveState();
-            renderWorkers();
-            if (currentAgendaView === 'calendar') renderDynamicCalendar();
-            showToast(`Turno de ${worker.name} finalizado. No se admitirán nuevas citas hoy.`);
-        }
-
-        function reopenWorkerShift(workerId) {
-            const worker = appState.workers.find(function(item) { return item.id === workerId; });
-            if (!worker) return;
-            worker.shiftState = {
-                date: getTodayISOString(),
-                status: 'available',
-                updatedAt: new Date().toISOString(),
-                updatedBy: currentSessionUser ? currentSessionUser.username : 'sistema'
-            };
-            saveState();
-            renderWorkers();
-            if (currentAgendaView === 'calendar') renderDynamicCalendar();
-            showToast(`Turno de ${worker.name} reabierto.`);
+            return { status: 'available', label: 'Disponible', pending, inProgress, schedule };
         }
 
         function renderWorkers() {
@@ -3452,19 +3418,9 @@
                 const shiftBadgeClasses = {
                     available: 'bg-emerald-100 text-emerald-800 border-emerald-200',
                     busy: 'bg-purple-100 text-purple-800 border-purple-200',
-                    finished: 'bg-slate-200 text-slate-700 border-slate-300',
                     off: 'bg-amber-50 text-amber-800 border-amber-200',
                     inactive: 'bg-rose-100 text-rose-800 border-rose-200'
                 };
-                let shiftActions = '';
-                if (shiftState.status === 'busy') {
-                    shiftActions = `<button onclick="releaseWorkerShift('${w.id}')" class="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition"><i class="fa-solid fa-unlock mr-1"></i>Liberar turno</button>`;
-                } else if (shiftState.status === 'available') {
-                    shiftActions = `<button disabled class="flex-1 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-semibold cursor-default"><i class="fa-solid fa-check mr-1"></i>Turno libre</button>` +
-                        `<button onclick="finishWorkerShift('${w.id}')" class="flex-1 py-2 rounded-xl bg-brand-800 hover:bg-brand-900 text-white text-[11px] font-semibold transition"><i class="fa-solid fa-circle-stop mr-1"></i>Finalizar turno</button>`;
-                } else if (shiftState.status === 'finished') {
-                    shiftActions = `<button onclick="reopenWorkerShift('${w.id}')" class="w-full py-2 rounded-xl bg-white hover:bg-cream-100 text-brand-800 border border-greekGold-400/40 text-[11px] font-semibold transition"><i class="fa-solid fa-rotate-left mr-1"></i>Reabrir turno</button>`;
-                }
 
                 return `
                     <div class="bg-white p-5 rounded-2xl shadow-sm border border-greekGold-400/20 flex flex-col justify-between space-y-4">
@@ -3489,8 +3445,6 @@
                                 ${specialties.length > 0 ? specialties.map(sp => `<span class="bg-cream-100 text-brand-800 text-[10px] px-2 py-0.5 rounded-md border border-greekGold-400/20">${sp}</span>`).join('') : '<span class="text-xs text-slate-400">Sin servicios asignados</span>'}
                             </div>
                         </div>
-
-                        ${shiftActions ? `<div class="flex gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200">${shiftActions}</div>` : ''}
 
                         <div class="pt-3 border-t border-slate-100 flex justify-between items-center text-xs">
                             <span class="text-slate-500"><i class="fa-solid fa-phone text-brand-500 mr-1"></i>${w.phone || '-'}</span>
@@ -3608,6 +3562,201 @@
             saveState();
             closeModal('worker-modal');
             renderWorkers();
+        }
+
+        // CLIENTS MODULE LOGIC
+        function escapeHtml(value) {
+            return String(value == null ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function formatClientBirthdate(value) {
+            if (!value) return 'No registrada';
+            const parts = value.split('-');
+            if (parts.length !== 3) return value;
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+
+        function renderClients() {
+            const searchInput = document.getElementById('client-search-input');
+            const search = searchInput ? searchInput.value.trim().toLowerCase() : '';
+            const tbody = document.getElementById('clients-table-body');
+            if (!tbody) return;
+
+            const filtered = appState.clients.filter(function(client) {
+                const haystack = `${client.name || ''} ${client.lastname || ''} ${client.phone || ''} ${client.email || ''}`.toLowerCase();
+                return haystack.includes(search);
+            }).sort(function(a, b) {
+                return `${a.name} ${a.lastname}`.localeCompare(`${b.name} ${b.lastname}`, 'es');
+            });
+
+            if (!filtered.length) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-slate-400"><i class="fa-regular fa-address-book text-2xl block mb-2"></i>No se encontraron clientas.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(function(client) {
+                const visits = appState.appointments.filter(function(appointment) {
+                    return appointment.clientId === client.id && appointment.status === 'Completada';
+                }).length;
+                const spent = appState.sales.filter(function(sale) {
+                    return sale.clientId === client.id;
+                }).reduce(function(total, sale) {
+                    return total + (parseFloat(sale.total) || 0);
+                }, 0);
+
+                return `<tr class="hover:bg-slate-50 transition">
+                    <td class="p-3.5">
+                        <div class="font-semibold text-slate-800">${escapeHtml(client.name)} ${escapeHtml(client.lastname)}</div>
+                        <div class="text-[10px] text-slate-400">${escapeHtml(client.id)}</div>
+                    </td>
+                    <td class="p-3.5">
+                        <div class="text-slate-700"><i class="fa-solid fa-phone text-brand-500 mr-1"></i>${escapeHtml(client.phone || '-')}</div>
+                        <div class="text-[11px] text-slate-400">${escapeHtml(client.email || 'Sin correo')}</div>
+                    </td>
+                    <td class="p-3.5 text-slate-600">${formatClientBirthdate(client.birthdate)}</td>
+                    <td class="p-3.5"><span class="badge bg-blue-50 text-blue-800">${visits}</span></td>
+                    <td class="p-3.5 font-bold text-emerald-700">S/ ${spent.toFixed(2)}</td>
+                    <td class="p-3.5 text-right">
+                        <button type="button" onclick="openClientModal('${client.id}')" class="text-slate-600 hover:text-brand-700 px-2 py-1 rounded-lg hover:bg-brand-50" title="Editar clienta">
+                            <i class="fa-solid fa-pen-to-square"></i> Editar
+                        </button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function openClientModal(clientId = null) {
+            const form = document.getElementById('client-form');
+            if (!form) return;
+            form.reset();
+            document.getElementById('client-id').value = '';
+
+            if (clientId) {
+                const client = appState.clients.find(function(item) { return item.id === clientId; });
+                if (!client) {
+                    showToast('No se encontró la clienta.', 'error');
+                    return;
+                }
+                document.getElementById('client-id').value = client.id;
+                document.getElementById('client-name').value = client.name || '';
+                document.getElementById('client-lastname').value = client.lastname || '';
+                document.getElementById('client-phone').value = client.phone || '';
+                document.getElementById('client-birthdate').value = client.birthdate || '';
+                document.getElementById('client-email').value = client.email || '';
+                document.getElementById('client-notes').value = client.notes || '';
+                document.getElementById('client-modal-title').textContent = 'Editar Cliente';
+                document.getElementById('client-submit-btn-text').textContent = 'Actualizar Cliente';
+            } else {
+                document.getElementById('client-modal-title').textContent = 'Registrar Cliente';
+                document.getElementById('client-submit-btn-text').textContent = 'Guardar Cliente';
+            }
+
+            openModal('client-modal');
+            setTimeout(function() { document.getElementById('client-name').focus(); }, 50);
+        }
+
+        function handleClientSubmit(event) {
+            event.preventDefault();
+            const id = document.getElementById('client-id').value;
+            const name = document.getElementById('client-name').value.trim();
+            const lastname = document.getElementById('client-lastname').value.trim();
+            const phone = document.getElementById('client-phone').value.trim();
+            const birthdate = document.getElementById('client-birthdate').value;
+            const email = document.getElementById('client-email').value.trim();
+            const notes = document.getElementById('client-notes').value.trim();
+
+            if (!name || !lastname || !phone) {
+                showToast('Completa nombre, apellido y teléfono.', 'error');
+                return;
+            }
+
+            const normalizedPhone = phone.replace(/\D/g, '');
+            const duplicate = appState.clients.find(function(client) {
+                return client.id !== id && String(client.phone || '').replace(/\D/g, '') === normalizedPhone;
+            });
+            if (duplicate) {
+                showToast(`El teléfono ya pertenece a ${duplicate.name} ${duplicate.lastname}.`, 'error');
+                return;
+            }
+
+            if (id) {
+                const index = appState.clients.findIndex(function(client) { return client.id === id; });
+                if (index === -1) {
+                    showToast('No se encontró la clienta a actualizar.', 'error');
+                    return;
+                }
+                appState.clients[index] = { ...appState.clients[index], id, name, lastname, phone, birthdate, email, notes };
+                showToast('Cliente actualizado correctamente.');
+            } else {
+                const newClient = {
+                    id: 'CLI-' + Date.now().toString().slice(-8),
+                    name,
+                    lastname,
+                    phone,
+                    birthdate,
+                    email,
+                    notes
+                };
+                appState.clients.push(newClient);
+                showToast('Cliente registrado correctamente.');
+            }
+
+            saveState();
+            closeModal('client-modal');
+            renderClients();
+            checkAndShowTodayBirthdays(false);
+        }
+
+        function getTodayBirthdayClients() {
+            const now = new Date();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            return appState.clients.filter(function(client) {
+                if (!client.birthdate) return false;
+                const parts = client.birthdate.split('-');
+                return parts.length === 3 && parts[1] === month && parts[2] === day;
+            });
+        }
+
+        function checkAndShowTodayBirthdays(openDetails = false) {
+            const birthdayClients = getTodayBirthdayClients();
+            const banner = document.getElementById('clients-birthday-banner');
+            const countBadge = document.getElementById('birthday-count-badge');
+            const bannerText = document.getElementById('birthday-banner-text');
+
+            if (banner) banner.classList.toggle('hidden', birthdayClients.length === 0);
+            if (countBadge) countBadge.textContent = `${birthdayClients.length} ${birthdayClients.length === 1 ? 'Clienta' : 'Clientas'}`;
+            if (bannerText && birthdayClients.length) {
+                bannerText.textContent = birthdayClients.length === 1
+                    ? `${birthdayClients[0].name} celebra su cumpleaños hoy en el Santuario Odyssa.`
+                    : `${birthdayClients.length} clientas celebran su cumpleaños hoy en el Santuario Odyssa.`;
+            }
+
+            if (!openDetails) return;
+            if (!birthdayClients.length) {
+                showToast('No hay clientas que cumplan años hoy.', 'error');
+                return;
+            }
+
+            const list = document.getElementById('birthday-modal-clients-list');
+            if (list) {
+                list.innerHTML = birthdayClients.map(function(client) {
+                    return `<div class="p-4 rounded-xl border border-amber-200 bg-amber-50/50 flex items-center justify-between gap-3">
+                        <div>
+                            <p class="font-cinzel font-bold text-brand-900">${escapeHtml(client.name)} ${escapeHtml(client.lastname)}</p>
+                            <p class="text-xs text-slate-600"><i class="fa-solid fa-phone mr-1 text-amber-600"></i>${escapeHtml(client.phone || '-')}</p>
+                            <p class="text-[11px] text-slate-500">Nacimiento: ${formatClientBirthdate(client.birthdate)}</p>
+                        </div>
+                        <i class="fa-solid fa-gift text-2xl text-amber-500"></i>
+                    </div>`;
+                }).join('');
+            }
+            openModal('client-birthday-modal');
         }
 
         function renderSchedule() {
