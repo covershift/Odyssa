@@ -190,6 +190,21 @@
             object-fit: contain;
             display: block;
         }
+        .odyssa-face-emblem {
+            background-color: #f8ead8;
+            background-image: url('./Logo.jpeg');
+            background-repeat: no-repeat;
+            background-size: 400% 400%;
+            background-position: 47% 27%;
+            background-blend-mode: multiply;
+        }
+        .odyssa-brand-artwork {
+            background-color: #ffffff;
+            background-image: url('./Logo.jpeg');
+            background-repeat: no-repeat;
+            background-size: contain;
+            background-position: center;
+        }
         .logo-sidebar {
             width: 40px;
             height: 40px;
@@ -375,16 +390,14 @@
     <div id="app-shell" class="hidden h-screen w-full overflow-hidden">
 
     <!-- MOBILE OVERLAY & NAVIGATION -->
-    <div id="mobile-overlay" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden md:hidden" onclick="toggleMobileSidebar()"></div>
+    <div id="mobile-overlay" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 hidden" onclick="toggleMobileSidebar()"></div>
 
     <!-- SIDEBAR -->
-    <aside id="sidebar" class="fixed md:static inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-[#220409] via-[#380913] to-[#180206] text-cream-100 border-r border-greekGold-500/25 flex flex-col transition-transform duration-300 transform -translate-x-full md:translate-x-0 shadow-2xl md:shadow-none">
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-72 max-w-[88vw] bg-gradient-to-b from-[#220409] via-[#380913] to-[#180206] text-cream-100 border-r border-greekGold-500/25 flex flex-col transition-transform duration-300 transform -translate-x-full shadow-2xl" aria-label="Menú principal">
         <!-- Logo Header -->
         <div class="p-3.5 flex items-center justify-between border-b border-greekGold-500/20 bg-black/30">
             <div class="flex items-center gap-2.5 min-w-0">
-                <div class="logo-box logo-sidebar">
-                    <img src="./Logo.jpeg" alt="Logo Odyssa">
-                </div>
+                <div class="logo-box logo-sidebar odyssa-face-emblem" role="img" aria-label="Emblema de Afrodita de Odyssa"></div>
                 <div class="min-w-0 flex-1">
                     <h1 class="font-cinzel text-base font-bold tracking-wider text-cream-50 truncate leading-tight">Odyssa</h1>
                     <p class="font-cinzel text-[8.5px] uppercase tracking-widest text-greekGold-400 font-semibold flex items-center gap-1 truncate mt-0.5">
@@ -392,43 +405,23 @@
                     </p>
                 </div>
             </div>
-            <button class="md:hidden text-cream-300 hover:text-white shrink-0 ml-2" onclick="toggleMobileSidebar()">
+            <button class="text-cream-300 hover:text-white shrink-0 ml-2 w-9 h-9 rounded-lg hover:bg-white/10" onclick="toggleMobileSidebar()" aria-label="Cerrar menú principal">
                 <i class="fa-solid fa-xmark text-lg"></i>
             </button>
         </div>
 
         <div class="greek-meander"></div>
 
-        <!-- Navigation Links with Greek Olympus Aesthetic -->
+        <!-- Navegación principal: orden operativo solicitado -->
         <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1" id="main-nav">
-            <button onclick="switchTab('dashboard')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 text-cream-200/80 hover:bg-white/5 hover:text-greekGold-300 active-tab" data-tab="dashboard" data-role="admin">
-                <i class="fa-solid fa-landmark w-5 text-center text-base text-greekGold-400"></i>
-                <span class="font-cinzel tracking-wider">Dashboard</span>
-            </button>
-            
-            <button onclick="switchTab('agenda')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 text-cream-200/80 hover:bg-white/5 hover:text-greekGold-300" data-tab="agenda">
-                <i class="fa-solid fa-calendar-days w-5 text-center text-base text-greekGold-400"></i>
-                <span class="font-cinzel tracking-wider">Agenda / Citas</span>
-            </button>
-
-            <button onclick="switchTab('servicios')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 text-cream-200/80 hover:bg-white/5 hover:text-greekGold-300" data-tab="servicios">
-                <i class="fa-solid fa-wand-magic-sparkles w-5 text-center text-base text-greekGold-400"></i>
-                <span class="font-cinzel tracking-wider">Servicios</span>
-            </button>
-
-            <button onclick="switchTab('trabajadoras')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 text-cream-200/80 hover:bg-white/5 hover:text-greekGold-300" data-tab="trabajadoras">
-                <i class="fa-solid fa-user-group w-5 text-center text-base text-greekGold-400"></i>
-                <span class="font-cinzel tracking-wider">Especialistas</span>
-            </button>
-
-            <button onclick="switchTab('horarios')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 text-cream-200/80 hover:bg-white/5 hover:text-greekGold-300" data-tab="horarios">
-                <i class="fa-solid fa-clock w-5 text-center text-base text-greekGold-400"></i>
-                <span class="font-cinzel tracking-wider">Horarios</span>
-            </button>
-
             <button onclick="switchTab('clientes')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 text-cream-200/80 hover:bg-white/5 hover:text-greekGold-300" data-tab="clientes">
                 <i class="fa-solid fa-address-book w-5 text-center text-base text-greekGold-400"></i>
                 <span class="font-cinzel tracking-wider">Clientes</span>
+            </button>
+
+            <button onclick="switchTab('agenda')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 text-cream-200/80 hover:bg-white/5 hover:text-greekGold-300" data-tab="agenda">
+                <i class="fa-solid fa-calendar-days w-5 text-center text-base text-greekGold-400"></i>
+                <span class="font-cinzel tracking-wider">Agendas / Citas</span>
             </button>
 
             <button onclick="switchTab('ventas')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 text-cream-200/80 hover:bg-white/5 hover:text-greekGold-300" data-tab="ventas">
@@ -436,23 +429,48 @@
                 <span class="font-cinzel tracking-wider">Atenciones</span>
             </button>
 
+            <div id="masters-nav-group" class="space-y-1">
+                <button id="masters-nav-toggle" type="button" onclick="toggleMastersMenu()" aria-expanded="false" aria-controls="masters-submenu" class="w-full flex items-center gap-3 px-4 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 text-cream-200/80 hover:bg-white/5 hover:text-greekGold-300">
+                    <i class="fa-solid fa-layer-group w-5 text-center text-base text-greekGold-400"></i>
+                    <span class="font-cinzel tracking-wider flex-1 text-left">Maestros</span>
+                    <i id="masters-nav-chevron" class="fa-solid fa-chevron-down text-[10px] transition-transform duration-200"></i>
+                </button>
+
+                <div id="masters-submenu" class="hidden ml-4 pl-3 border-l border-greekGold-400/25 space-y-1">
+                    <button onclick="switchTab('servicios')" class="nav-item w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium rounded-lg transition-all text-cream-200/75 hover:bg-white/5 hover:text-greekGold-300" data-tab="servicios">
+                        <i class="fa-solid fa-wand-magic-sparkles w-4 text-center text-greekGold-400"></i>
+                        <span class="font-cinzel tracking-wide">Servicios</span>
+                    </button>
+                    <button onclick="switchTab('trabajadoras')" class="nav-item w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium rounded-lg transition-all text-cream-200/75 hover:bg-white/5 hover:text-greekGold-300" data-tab="trabajadoras">
+                        <i class="fa-solid fa-user-group w-4 text-center text-greekGold-400"></i>
+                        <span class="font-cinzel tracking-wide">Especialistas</span>
+                    </button>
+                    <button onclick="switchTab('horarios')" class="nav-item w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium rounded-lg transition-all text-cream-200/75 hover:bg-white/5 hover:text-greekGold-300" data-tab="horarios">
+                        <i class="fa-solid fa-clock w-4 text-center text-greekGold-400"></i>
+                        <span class="font-cinzel tracking-wide">Horarios</span>
+                    </button>
+                    <button onclick="switchTab('configuracion')" class="nav-item w-full flex items-center gap-2.5 px-3 py-2.5 text-xs font-medium rounded-lg transition-all text-cream-200/75 hover:bg-white/5 hover:text-greekGold-300" data-tab="configuracion">
+                        <i class="fa-solid fa-sliders w-4 text-center text-greekGold-400"></i>
+                        <span class="font-cinzel tracking-wide">Configuración</span>
+                    </button>
+                </div>
+            </div>
+
+            <button onclick="switchTab('dashboard')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 text-cream-200/80 hover:bg-white/5 hover:text-greekGold-300" data-tab="dashboard" data-role="admin">
+                <i class="fa-solid fa-chart-pie w-5 text-center text-base text-greekGold-400"></i>
+                <span class="font-cinzel tracking-wider">Dashboards</span>
+            </button>
+
             <button onclick="switchTab('reportes')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 text-cream-200/80 hover:bg-white/5 hover:text-greekGold-300" data-tab="reportes" data-role="admin">
                 <i class="fa-solid fa-chart-line w-5 text-center text-base text-greekGold-400"></i>
                 <span class="font-cinzel tracking-wider">Reportes</span>
-            </button>
-
-            <button onclick="switchTab('configuracion')" class="nav-item w-full flex items-center gap-3 px-4 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all duration-200 text-cream-200/80 hover:bg-white/5 hover:text-greekGold-300" data-tab="configuracion">
-                <i class="fa-solid fa-sliders w-5 text-center text-base text-greekGold-400"></i>
-                <span class="font-cinzel tracking-wider">Configuración</span>
             </button>
         </nav>
 
         <!-- User / Salon Badge Footer -->
         <div class="p-3 border-t border-greekGold-500/20 bg-black/35">
             <div class="flex items-center gap-2.5">
-                <div class="logo-box logo-footer">
-                    <img src="./Logo.jpeg" alt="Odyssa Nails Studio">
-                </div>
+                <div class="logo-box logo-footer odyssa-face-emblem" role="img" aria-label="Emblema de Afrodita de Odyssa"></div>
                 <div class="flex-1 min-w-0">
                     <p id="session-user-name" class="text-xs font-cinzel font-bold text-cream-100 truncate">Administrador</p>
                     <p id="session-role-name" class="text-[9.5px] text-greekGold-400/90 truncate">Perfil administrador</p>
@@ -470,13 +488,11 @@
         <!-- TOP HEADER BAR -->
         <header class="bg-[#FDFBF7]/95 backdrop-blur-md border-b border-greekGold-400/25 px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 sm:gap-4 sticky top-0 z-30 shadow-xs">
             <div class="flex items-center gap-2 sm:gap-3 min-w-0">
-                <button class="md:hidden text-brand-900 hover:text-brand-700 p-2 rounded-lg hover:bg-cream-100 shrink-0" onclick="toggleMobileSidebar()" aria-label="Abrir menú principal">
+                <button id="main-menu-toggle" class="text-brand-900 hover:text-brand-700 p-2 rounded-lg hover:bg-cream-100 shrink-0" onclick="toggleMobileSidebar()" aria-label="Abrir menú principal" aria-controls="sidebar" aria-expanded="false">
                     <i class="fa-solid fa-bars text-lg"></i>
                 </button>
                 <div class="hidden sm:flex items-center gap-2">
-                    <div class="logo-box logo-header">
-                        <img src="./Logo.jpeg" alt="Logo Odyssa">
-                    </div>
+                    <div class="logo-box logo-header odyssa-face-emblem" role="img" aria-label="Emblema de Afrodita de Odyssa"></div>
                 </div>
                 <h2 id="page-title" class="font-cinzel text-base sm:text-2xl font-bold text-brand-900 tracking-wide truncate">Dashboard</h2>
             </div>
@@ -515,7 +531,9 @@
                                 <span>Santuario Olímpico de Belleza</span>
                             </div>
                             <h2 class="font-cinzel text-2xl sm:text-4xl font-bold tracking-wide text-cream-50 leading-tight">
-                                Donde la Belleza se Eleva a la <span class="gold-gradient-text font-black">Divinidad</span>
+                                <span class="block">Tu estilo,</span>
+                                <span class="block">tus uñas,</span>
+                                <span class="gold-gradient-text font-black block">tus reglas</span>
                             </h2>
                             <p class="text-cream-200/85 text-xs sm:text-sm leading-relaxed">
                                 Inspirado en la armonía helénica y el cuidado supremo de la diosa Afrodita. Gestione citas, especialistas y servicios con la elegancia eterna del Olimpo.
@@ -525,20 +543,10 @@
                                     <i class="fa-solid fa-wand-magic-sparkles"></i>
                                     <span>Agendar Nueva Cita</span>
                                 </button>
-                                <button onclick="openSaleModal()" class="bg-white/10 hover:bg-white/15 text-cream-100 border border-greekGold-400/30 font-cinzel font-medium text-xs sm:text-sm px-4 py-2.5 rounded-xl backdrop-blur-xs transition flex items-center gap-2">
-                                    <i class="fa-solid fa-receipt text-greekGold-300"></i>
-                                    <span>Registrar Cobro</span>
-                                </button>
                             </div>
                         </div>
 
-                        <div class="relative w-44 h-44 sm:w-52 sm:h-52 md:w-60 md:h-60 shrink-0 rounded-2xl overflow-hidden border-2 border-greekGold-400/60 shadow-2xl group">
-                            <img src="./assets/aphrodite_hero.jpg" alt="Afrodita Diosa de la Belleza" loading="lazy" decoding="async" class="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700">
-                            <div class="absolute inset-0 bg-gradient-to-t from-[#25040a]/80 via-transparent to-transparent"></div>
-                            <div class="absolute bottom-2 inset-x-2 text-center">
-                                <span class="font-cinzel text-[10px] sm:text-[11px] font-bold tracking-widest text-greekGold-300 uppercase drop-shadow-md">Afrodita · Templo de Belleza</span>
-                            </div>
-                        </div>
+                        <div class="odyssa-brand-artwork relative w-44 h-44 sm:w-52 sm:h-52 md:w-60 md:h-60 shrink-0 rounded-2xl overflow-hidden border-2 border-greekGold-400/60 shadow-2xl" role="img" aria-label="Logotipo completo de Odyssa Nails Studio"></div>
                     </div>
                 </div>
 
@@ -2294,9 +2302,28 @@
         }
 
         // NAVIGATION LOGIC
+        const MASTER_TABS = ['servicios', 'trabajadoras', 'horarios', 'configuracion'];
+
+        function setMastersMenuExpanded(expanded) {
+            const submenu = document.getElementById('masters-submenu');
+            const toggle = document.getElementById('masters-nav-toggle');
+            const chevron = document.getElementById('masters-nav-chevron');
+            if (!submenu || !toggle || !chevron) return;
+
+            submenu.classList.toggle('hidden', !expanded);
+            chevron.classList.toggle('rotate-180', expanded);
+            toggle.setAttribute('aria-expanded', String(expanded));
+        }
+
+        function toggleMastersMenu() {
+            const submenu = document.getElementById('masters-submenu');
+            if (!submenu) return;
+            setMastersMenuExpanded(submenu.classList.contains('hidden'));
+        }
+
         function getAllowedTabs() {
-            const operationalTabs = ['agenda', 'servicios', 'trabajadoras', 'horarios', 'clientes', 'ventas', 'configuracion'];
-            return isAdminSession() ? ['dashboard', ...operationalTabs, 'reportes'] : operationalTabs;
+            const operationalTabs = ['clientes', 'agenda', 'ventas', ...MASTER_TABS];
+            return isAdminSession() ? [...operationalTabs, 'dashboard', 'reportes'] : operationalTabs;
         }
 
         function switchTab(tabId, updateHistory = true) {
@@ -2323,6 +2350,7 @@
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
             document.querySelectorAll('.nav-item').forEach(el => {
                 el.classList.remove('active-tab', 'bg-gradient-to-r', 'from-greekGold-500/20', 'to-transparent', 'text-greekGold-300', 'border-l-4', 'border-greekGold-400', 'font-semibold');
+                el.classList.remove('text-cream-200/75');
                 el.classList.add('text-cream-200/80');
             });
 
@@ -2332,18 +2360,28 @@
             const activeNav = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
             if (activeNav) {
                 activeNav.classList.add('active-tab', 'bg-gradient-to-r', 'from-greekGold-500/20', 'to-transparent', 'text-greekGold-300', 'border-l-4', 'border-greekGold-400', 'font-semibold');
-                activeNav.classList.remove('text-cream-200/80');
+                activeNav.classList.remove('text-cream-200/75', 'text-cream-200/80');
+            }
+
+            const mastersActive = MASTER_TABS.includes(tabId);
+            setMastersMenuExpanded(mastersActive);
+            const mastersToggle = document.getElementById('masters-nav-toggle');
+            if (mastersToggle) {
+                mastersToggle.classList.toggle('bg-white/10', mastersActive);
+                mastersToggle.classList.toggle('text-greekGold-300', mastersActive);
+                mastersToggle.classList.toggle('font-semibold', mastersActive);
+                mastersToggle.classList.toggle('text-cream-200/80', !mastersActive);
             }
 
             // Update Page Title
             const titles = {
-                dashboard: 'Dashboard Executive',
-                agenda: 'Agenda & Citas del Día',
+                dashboard: 'Dashboards',
+                agenda: 'Agendas / Citas',
                 servicios: 'Catálogo de Servicios',
                 trabajadoras: 'Equipo de Trabajadoras',
                 horarios: 'Horarios de Atención',
                 clientes: 'Directorio de Clientes',
-                ventas: 'Registro de Servicios Realizados',
+                ventas: 'Atenciones',
                 reportes: 'Análisis & Reportes',
                 configuracion: 'Configuración del Sistema'
             };
@@ -2354,6 +2392,8 @@
             if (sidebar) sidebar.classList.add('-translate-x-full');
             const mobileOverlay = document.getElementById('mobile-overlay');
             if (mobileOverlay) mobileOverlay.classList.add('hidden');
+            const menuToggle = document.getElementById('main-menu-toggle');
+            if (menuToggle) menuToggle.setAttribute('aria-expanded', 'false');
 
             // Render view dynamic content
             if (tabId === 'dashboard') renderDashboard();
@@ -2379,7 +2419,16 @@
             const overlay = document.getElementById('mobile-overlay');
             sidebar.classList.toggle('-translate-x-full');
             overlay.classList.toggle('hidden');
+            const menuToggle = document.getElementById('main-menu-toggle');
+            if (menuToggle) menuToggle.setAttribute('aria-expanded', String(!sidebar.classList.contains('-translate-x-full')));
         }
+
+        document.addEventListener('keydown', event => {
+            const sidebar = document.getElementById('sidebar');
+            if (event.key === 'Escape' && sidebar && !sidebar.classList.contains('-translate-x-full')) {
+                toggleMobileSidebar();
+            }
+        });
 
         function closeModal(modalId) {
             document.getElementById(modalId).classList.add('hidden');
